@@ -1,0 +1,59 @@
+How to identify and resolve SQL Server Index Fragmentation 
+References => https://www.sqlshack.com/how-to-identify-and-resolve-sql-server-index-fragmentation/
+
+
+Index fragmentation identification and index maintenance are important parts of the database maintenance task.
+The index fragmentation is the index performance value in percentage, which can be fetched by SQL Server DMV. According to the index performance value, users can take the indexes in maintenance by revising the fragmentation percentage with the help of Rebuild or Reorganize operation.
+
+
+Index Fragmentation Status SQL Query in Descending Order
+----------------------------------------------------------
+
+SELECT S.name as 'Schema',
+T.name as 'Table',
+I.name as 'Index',
+DDIPS.avg_fragmentation_in_percent,
+DDIPS.page_count
+FROM sys.dm_db_index_physical_stats (DB_ID(), NULL, NULL, NULL, NULL) AS DDIPS
+INNER JOIN sys.tables T on T.object_id = DDIPS.object_id
+INNER JOIN sys.schemas S on T.schema_id = S.schema_id
+INNER JOIN sys.indexes I ON I.object_id = DDIPS.object_id
+AND DDIPS.index_id = I.index_id
+WHERE DDIPS.database_id = DB_ID()
+and I.name is not null
+AND DDIPS.avg_fragmentation_in_percent > 0
+ORDER BY DDIPS.avg_fragmentation_in_percent desc
+
+
+Action => Reduce the fragmentation with the choices of either REBUILD or REORGANIZE. REBUILD or REORGANIZE is the index maintenance command that can be executed with the ALTER INDEX statement. Users can perform this command using SSMS as well.
+
+
+--Query to check allocation on Objects. Run it before rebuilding Objects and after to see the changes on the objects for which DDIPS.avg_fragmentation_in_percent is high
+----------
+
+
+SELECT OBJECT_NAME(IX.object_id) as db_name, si.name, extent_page_id, allocated_page_page_id, previous_page_page_id, next_page_page_id
+FROM sys.dm_db_database_page_allocations(DB_ID('AdventureWorks'), OBJECT_ID('Sales.OrderTracking'),NULL, NULL, 'DETAILED') IX
+INNER JOIN sys.indexes si on IX.object_id = si.object_id AND IX.index_id = si.index_id
+WHERE si.name = 'IX_OrderTracking_CarrierTrackingNumber'
+ORDER BY allocated_page_page_id
+
+--Basic Rebuild Command
+ALTER INDEX Index_Name ON Table_Name REBUILD
+ 
+--REBUILD Index with ONLINE OPTION
+ALTER INDEX Index_Name ON Table_Name REBUILD WITH(ONLINE=ON) | WITH(ONLINE=ON)
+
+
+Reorganize Index
+----------------
+
+The REORGANIZE INDEX command reorders the index page by expelling the free or unused space on the page. Ideally, index pages are reordered physically in the data file. 
+
+ALTER INDEX IX_OrderTracking_SalesOrderID ON Sales.OrderTracking REORGANIZE
+
+
+
+To perform the REORGANIZE index operation on all indexes of the table or database together, the user can use the DBCC INDEXDEFRAG() command:
+
+DBCC INDEXDEFRAG('DatabaseName', 'TableName');
